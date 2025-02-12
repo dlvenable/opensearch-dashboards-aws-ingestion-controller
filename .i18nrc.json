@@ -1,0 +1,7 @@
+{
+  "prefix": "ingestionController",
+  "paths": {
+    "ingestionController": "."
+  },
+  "translations": ["translations/ja-JP.json"]
+}
