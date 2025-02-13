@@ -8,6 +8,8 @@
     "osd": "../../scripts/use_node ../../scripts/osd"
   },
   "dependencies": {
-    "@aws-sdk/client-osis": "^3.744.0"
+    "@aws-sdk/client-osis": "^3.744.0",
+    "js-yaml": "^4.1.0",
+    "jsonpath-plus": "^10.2.0"
   }
 }

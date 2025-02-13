@@ -2,6 +2,9 @@ import { IRouter } from '../../../../src/core/server';
 import { schema } from "@osd/config-schema";
 import { GetPipelineCommand, ListPipelinesCommand, OSISClient } from "@aws-sdk/client-osis";
 
+import * as yaml from 'js-yaml';
+import { JSONPath } from 'jsonpath-plus';
+
 export function defineRoutes(router: IRouter) {
   const client = new OSISClient({});
 
@@ -52,6 +55,12 @@ export function defineRoutes(router: IRouter) {
     }
   );
 
+  /**
+   * Gets a pipeline from OSIS.
+   *
+   * @param pipelineName The name of the pipeline to get.
+   * @returns The pipeline details.
+   */
   async function getPipeline(pipelineName: string) {
     const getCommand = new GetPipelineCommand({PipelineName: pipelineName});
 
@@ -63,7 +72,9 @@ export function defineRoutes(router: IRouter) {
         pipelineName: pipeline.PipelineName,
         status: pipeline.Status,
         lastUpdatedAt: pipeline.LastUpdatedAt?.toISOString(),
-        createdAt: pipeline.CreatedAt?.toISOString()
+        createdAt: pipeline.CreatedAt?.toISOString(),
+        ingestEndpointUrl: pipeline.IngestEndpointUrls ? (pipeline.IngestEndpointUrls.length == 1 ? pipeline.IngestEndpointUrls[0] : null) : null,
+        pipelineConfigurationBody: pipeline.PipelineConfigurationBody
       } as IngestionPipelineDetails
 
     } catch (error) {
@@ -72,32 +83,56 @@ export function defineRoutes(router: IRouter) {
     }
   }
 
-  router.get(
-    {
-      path: '/api/ingestion_controller/pipelines_static',
-      validate: false,
-    },
-    async (context, request, response) => {
-      return response.ok({
-        body: {
-          pipelines: [
-            {
-              pipelineName: 'pipeline1',
-              status: 'ACTIVE',
-            },
-            {
-              pipelineName: 'pipeline2',
-              status: 'ACTIVE',
-            },
-            {
-              pipelineName: 'pipeline3',
-              status: 'ACTIVE',
-            },
-          ]
-        },
-      });
+  /**
+   * Parses the pipeline configuration body to understand information such as
+   * the indexes.
+   *
+   * @param pipelineConfigurationBody The pipeline configuration body (the YAML) from the pipeline
+   * @returns An object of {@link IngestionPipelineComponents containing the indexes information.
+   */
+  function understandPipeline(pipeline: IngestionPipelineDetails) : IngestionPipelineComponents {
+    const pipelineConfigurationBody = pipeline.pipelineConfigurationBody;
+    const yamlBody = yaml.load(pipelineConfigurationBody);
+
+    const indexes: string[] = JSONPath({ path: '$.*.sink[*].opensearch.index', json: yamlBody });
+
+    const indexesInformation = indexes.map(index => ({
+      name: index
+    }))
+      .map(index => (index as IngestionPipelineIndex));
+
+    let ingestionEndpointUrl = null;
+    if(pipeline.ingestEndpointUrl != null) {
+      let resolvedPaths: string[] = [];
+
+      // Iterate through all top-level keys (potential pipeline names)
+      for (const pipelineName of Object.keys(yamlBody)) {
+        if(pipelineName == 'version') continue;
+
+        const sourcePaths: string[] = JSONPath({ path: `$.${pipelineName}.source.*.path`, json: yamlBody });
+        if(sourcePaths.length == 0)
+          continue;
+
+        const resolvedPath = sourcePaths[0].replace('${pipelineName}', pipelineName);
+
+        if (indexes.length > 0) {
+          resolvedPaths.push(resolvedPath);
+        }
+      }
+      //const sourcePaths: string[] = JSONPath({ path: '$.*.source.*.path', json: yamlBody });
+
+      if(resolvedPaths.length > 0) {
+        ingestionEndpointUrl = pipeline.ingestEndpointUrl + resolvedPaths[0];
+      }
+
+
     }
-  );
+
+    return {
+      indexes: indexesInformation,
+      ingestionEndpointUrl: ingestionEndpointUrl
+    }
+  }
 
   router.get(
     {
@@ -110,10 +145,12 @@ export function defineRoutes(router: IRouter) {
     },
     async (context, request, response) => {
       try {
-        const pipeline = await getPipeline(request.params.pipelineName)
+        const pipeline = await getPipeline(request.params.pipelineName);
+        const ingestionPipelineComponents = understandPipeline(pipeline);
         return response.ok({
           body: {
-            pipeline: pipeline
+            pipeline: pipeline,
+            components: ingestionPipelineComponents
           },
         });
       } catch (error) {
@@ -125,45 +162,6 @@ export function defineRoutes(router: IRouter) {
             message: error.message,
           },
         });
-      }
-
-    }
-  );
-
-  router.get(
-    {
-      path: '/api/ingestion_controller/pipelines_static/{pipelineName}',
-      validate: {
-        params: schema.object({
-          pipelineName: schema.string(),
-        }),
-      },
-    },
-    async (context, request, response) => {
-      if(request.params.pipelineName === 'pipeline1') {
-        return response.ok({
-          body: {
-            pipeline: {
-              pipelineName: 'pipeline1',
-              status: 'ACTIVE',
-              createdAt: '2024-01-01T00:00:00.000Z',
-              lastUpdatedAt: '2025-01-01T00:00:00.000Z',
-            }
-          },
-        });
-      } else if(request.params.pipelineName == 'pipeline2') {
-        return response.ok({
-          body: {
-            pipeline: {
-              pipelineName: 'pipeline2',
-              status: 'CREATING',
-              createdAt: '2024-01-01T00:00:00.000Z',
-              lastUpdatedAt: '2025-01-01T00:00:00.000Z',
-            }
-          },
-        });
-      } else {
-        return response.notFound()
       }
 
     }

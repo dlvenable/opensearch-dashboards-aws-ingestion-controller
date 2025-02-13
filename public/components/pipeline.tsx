@@ -3,11 +3,14 @@ import { i18n } from '@osd/i18n';
 import { FormattedMessage } from '@osd/i18n/react';
 
 import {
+  EuiBasicTable, EuiButton,
+  EuiFormRow,
   EuiHorizontalRule,
   EuiPage,
   EuiPageBody,
   EuiPageContent, EuiPageContentBody, EuiPageHeader,
   EuiText,
+  EuiTextArea,
   EuiTitle
 } from "@elastic/eui";
 import { useParams } from "react-router-dom";
@@ -21,11 +24,18 @@ export const PipelinePage: React.FC<IngestionControllerAppDeps> = ({
   const {pipelineName} = useParams<{ pipelineName: string }>();
 
   const [pipeline, setPipeline] = useState<IngestionPipelineDetails | undefined>();
+  const [components, setComponents] = useState<IngestionPipelineComponents | undefined>();
+
+  const indexColumns = [
+    {field: 'name', name: 'Name'}
+  ];
+
 
   useEffect(() => {
     const getPipeline = async () => {
       http.get(`/api/ingestion_controller/pipelines/${pipelineName}`).then((res) => {
         setPipeline(res.pipeline);
+        setComponents(res.components)
         // Use the core notifications service to display a success message.
         notifications.toasts.addSuccess(
           i18n.translate('ingestionController.getPipeline', {
@@ -90,8 +100,38 @@ export const PipelinePage: React.FC<IngestionControllerAppDeps> = ({
                     }}
                     />
                   </p>
+                  <p>
+                    <FormattedMessage
+                      id="ingestionController.ingestionEndpointUrl"
+                      defaultMessage="Endpoint: {endpoint}"
+                      values={{endpoint: pipeline ? pipeline.ingestEndpointUrl : 'Pull-based source'}}
+                    />
+                  </p>
+                  <p>
+                    <FormattedMessage
+                      id="ingestionController.ingestionEndpointUrl"
+                      defaultMessage="Endpoint: {endpoint}"
+                      values={{endpoint: components ? components.ingestionEndpointUrl : 'Pull-based source'}}
+                    />
+                  </p>
+                  <EuiButton type="primary" size="s">
+                    <FormattedMessage
+                      id="ingestionController.testEndpointButton"
+                      defaultMessage="Test Endpoint"
+                    />
+                  </EuiButton>
+
                   <EuiHorizontalRule/>
+                  <EuiFormRow fullWidth={true} label="Pipeline Configuration">
+                    <EuiTextArea fullWidth={true}
+                                 placeholder="Configuration"
+                                 className={'pipeline-configuration'}
+                      value={pipeline ? pipeline.pipelineConfigurationBody : 'No configuration'}
+                    />
+                  </EuiFormRow>
                 </EuiText>
+                <EuiHorizontalRule/>
+                <EuiBasicTable items={components ? components.indexes : []} columns={indexColumns}/>
               </EuiPageContentBody>
             </EuiPageContent>
           </EuiPageBody>
