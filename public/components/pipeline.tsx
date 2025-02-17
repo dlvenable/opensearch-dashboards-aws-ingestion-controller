@@ -131,6 +131,9 @@ export const PipelinePage: React.FC<IngestionControllerAppDeps> = ({
                   </EuiFormRow>
                 </EuiText>
                 <EuiHorizontalRule/>
+                <EuiTitle size="m">
+                  <h3>Indexes</h3>
+                </EuiTitle>
                 <EuiBasicTable items={components ? components.indexes : []} columns={indexColumns}/>
               </EuiPageContentBody>
             </EuiPageContent>
